@@ -840,51 +840,80 @@ document.getElementById('modal-ok').onclick = () => {
   renderContent();
 };
 
+
 // ── GRIST INTEGRATION ──
-if (typeof grist !== 'undefined') {
-  grist.ready({ requiredAccess: 'full', columns: [] });
+function parseCollections(data) {
+  return data.id.map((id, i) => ({
+    id,
+    Name:    data.Name?.[i]    || '',
+    Type:    data.Type?.[i]    || 'custom',
+    Date:    data.Date?.[i]    || '',
+    PageNum: data.PageNum?.[i] || i + 1,
+  }));
+}
 
-  // Try to read both tables
-  grist.docApi.fetchTable('Collections').then(data => {
-    if (!data || !data.id) return;
-    gristConnected = true;
-    collections = data.id.map((id, i) => ({
-      id,
-      Name:    data.Name?.[i]    || '',
-      Type:    data.Type?.[i]    || 'custom',
-      Date:    data.Date?.[i]    || '',
-      PageNum: data.PageNum?.[i] || i + 1,
-    }));
-    if (collections.length) activeColId = collections[0].id;
+function parseEntries(data) {
+  return data.id.map((id, i) => ({
+    id,
+    CollectionId: data.CollectionId?.[i] || 0,
+    Text:         data.Text?.[i]         || '',
+    Symbol:       data.Symbol?.[i]       || 'note',
+    Priority:     !!data.Priority?.[i],
+    Tags:         data.Tags?.[i]         || '',
+    Done:         !!data.Done?.[i],
+    Migrated:     !!data.Migrated?.[i],
+  }));
+}
 
-    return grist.docApi.fetchTable('Entries');
-  }).then(data => {
-    if (!data || !data.id) { renderTabs(); renderContent(); return; }
-    entries = data.id.map((id, i) => ({
-      id,
-      CollectionId: data.CollectionId?.[i] || 0,
-      Text:         data.Text?.[i]         || '',
-      Symbol:       data.Symbol?.[i]       || 'note',
-      Priority:     !!data.Priority?.[i],
-      Tags:         data.Tags?.[i]         || '',
-      Done:         !!data.Done?.[i],
-      Migrated:     !!data.Migrated?.[i],
-    }));
-    renderTabs();
-    renderContent();
-  }).catch(() => {
-    renderTabs();
-    renderContent();
-  });
+let isLoading = false;
 
-  // Live update on table change
-  grist.on('message', (msg) => {
-    if (msg.tableId === 'Entries' || msg.tableId === 'Collections') {
-      location.reload(); // simple refresh on external change
+async function loadFromGrist() {
+  if (isLoading) return;
+  isLoading = true;
+  try {
+    const colData = await grist.docApi.fetchTable('Collections');
+    if (colData && colData.id && colData.id.length > 0) {
+      gristConnected = true;
+      collections = parseCollections(colData);
+      if (!collections.find(c => c.id === activeColId)) {
+        activeColId = collections[0].id;
+      }
     }
+  } catch(e) { /* table absente, garde le mode démo */ }
+
+  try {
+    const entData = await grist.docApi.fetchTable('Entries');
+    if (entData && entData.id) {
+      entries = parseEntries(entData);
+    }
+  } catch(e) { /* table absente */ }
+
+  isLoading = false;
+  renderTabs();
+  renderContent();
+}
+
+if (typeof grist !== 'undefined') {
+  // Déclare le widget — PAS de columns[], évite les boucles de messages
+  grist.ready({ requiredAccess: 'full' });
+
+  // Chargement initial unique via onOptions (appelé quand Grist est prêt)
+  grist.onOptions((_options, _interaction) => {
+    loadFromGrist();
   });
+
+  // Debounce pour les rafraîchissements suite à des éditions externes
+  let refreshTimer = null;
+  function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(loadFromGrist, 600);
+  }
+
+  // Écoute les changements de données Grist (API officielle)
+  grist.onRecords(() => scheduleRefresh());
+
 } else {
-  // Demo mode
+  // Mode démo hors Grist
   renderTabs();
   renderContent();
 }
