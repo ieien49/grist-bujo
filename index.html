@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bullet Journal – Grist Widget</title>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root {
+    --ink: #1a1612;
+    --paper: #f5f0e8;
+    --paper-dark: #ede7d5;
+    --accent: #c0392b;
+    --accent2: #2c5f8a;
+    --muted: #8a7d6b;
+    --line: #d4c9b0;
+    --done-color: #a09080;
+    --shadow: rgba(0,0,0,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #e8e0d0;
+    font-family: 'DM Mono', monospace;
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 27px,
+        rgba(0,0,0,0.03) 27px,
+        rgba(0,0,0,0.03) 28px
+      );
+  }
+
+  /* ── NOTEBOOK LAYOUT ── */
+  .notebook {
+    max-width: 720px;
+    margin: 0 auto;
+    background: var(--paper);
+    min-height: 100vh;
+    box-shadow: 4px 0 24px var(--shadow), -2px 0 8px var(--shadow);
+    position: relative;
+    border-left: 4px solid var(--line);
+  }
+
+  /* Spine redline */
+  .notebook::before {
+    content: '';
+    position: absolute;
+    left: 42px;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(192,57,43,0.35);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  .nb-header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 18px 20px 14px 52px;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 3px solid var(--accent);
+  }
+
+  .nb-header .title {
+    font-family: 'Special Elite', serif;
+    font-size: 1.4rem;
+    letter-spacing: 0.08em;
+  }
+
+  .nb-header .subtitle {
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .nb-header .date-badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    border: 1px solid var(--accent);
+    padding: 2px 7px;
+    border-radius: 2px;
+  }
+
+  /* ── TABS (collections) ── */
+  .tabs-bar {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    background: var(--paper-dark);
+    border-bottom: 1px solid var(--line);
+    padding-left: 52px;
+    scrollbar-width: none;
+  }
+  .tabs-bar::-webkit-scrollbar { display: none; }
+
+  .tab {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 9px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    border-right: 1px solid var(--line);
+    background: transparent;
+    border-top: none;
+    border-left: none;
+    font-family: inherit;
+  }
+
+  .tab:hover { color: var(--ink); }
+  .tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+    background: var(--paper);
+  }
+
+  .tab-add {
+    padding: 9px 14px;
+    color: var(--muted);
+    font-size: 1rem;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+    transition: color 0.15s;
+  }
+  .tab-add:hover { color: var(--accent); }
+
+  /* ── CONTENT ── */
+  .nb-content {
+    padding: 20px 20px 40px 52px;
+  }
+
+  /* ── COLLECTION HEADER ── */
+  .col-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1.5px solid var(--line);
+  }
+
+  .col-title {
+    font-family: 'Special Elite', serif;
+    font-size: 1.15rem;
+    letter-spacing: 0.06em;
+  }
+
+  .col-type-badge {
+    font-size: 0.58rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+  }
+
+  .type-daily   { color: var(--accent2); }
+  .type-monthly { color: #7b5ea7; }
+  .type-weekly  { color: #2e8b57; }
+  .type-future  { color: var(--muted); }
+  .type-custom  { color: var(--accent); }
+
+  .col-date {
+    margin-left: auto;
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+
+  /* ── ENTRIES ── */
+  .entries-list {
+    list-style: none;
+  }
+
+  .entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+    padding-left: 0;
+  }
+  .entry:hover { background: rgba(0,0,0,0.02); }
+  .entry:last-child { border-bottom: none; }
+
+  .entry-symbol {
+    width: 22px;
+    min-width: 22px;
+    text-align: center;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    user-select: none;
+    position: relative;
+    top: 1px;
+  }
+
+  .entry-text {
+    flex: 1;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    padding-right: 8px;
+  }
+
+  .entry.done .entry-text {
+    color: var(--done-color);
+    text-decoration: line-through;
+    text-decoration-color: rgba(160,144,128,0.5);
+  }
+
+  .entry.migrated .entry-text { color: var(--muted); }
+
+  .entry-tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+
+  .tag {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    padding: 1px 5px;
+    background: var(--paper-dark);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .entry-priority {
+    font-size: 0.6rem;
+    color: var(--accent);
+    min-width: 12px;
+    text-align: right;
+    line-height: 1.6;
+    padding-top: 2px;
+  }
+
+  /* ── SIGNIFIER dots ── */
+  .signifier {
+    font-size: 0.7rem;
+    min-width: 10px;
+    text-align: center;
+    line-height: 1.6;
+    padding-top: 2px;
+  }
+
+  /* ── ADD ENTRY FORM ── */
+  .add-entry-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1.5px solid var(--line);
+  }
+
+  .symbol-picker {
+    display: flex;
+    gap: 4px;
+  }
+
+  .sym-btn {
+    width: 28px; height: 28px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--paper-dark);
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.1s, background 0.1s;
+    color: var(--ink);
+  }
+  .sym-btn:hover, .sym-btn.selected {
+    border-color: var(--accent);
+    background: var(--paper);
+  }
+  .sym-btn.selected { box-shadow: 0 0 0 1px var(--accent); }
+
+  .entry-input {
+    flex: 1;
+    border: none;
+    border-bottom: 1.5px solid var(--line);
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--ink);
+    padding: 4px 6px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .entry-input:focus { border-bottom-color: var(--accent2); }
+  .entry-input::placeholder { color: var(--muted); font-style: italic; }
+
+  .add-btn {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 5px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  .add-btn:hover { background: var(--accent); }
+
+  /* ── LEGEND ── */
+  .legend {
+    margin-top: 32px;
+    padding: 14px 16px;
+    background: var(--paper-dark);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+  }
+  .legend-title {
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 6px 20px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .legend-sym { width: 18px; text-align: center; }
+
+  /* ── EMPTY STATE ── */
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-style: italic;
+  }
+
+  /* ── MODAL COLLECTION ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    padding: 24px;
+    width: 340px;
+    border-radius: 2px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal-title {
+    font-family: 'Special Elite', serif;
+    font-size: 1rem;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+
+  .form-group { margin-bottom: 12px; }
+  .form-label {
+    display: block;
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .form-input, .form-select {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--ink);
+    padding: 6px 9px;
+    outline: none;
+    border-radius: 2px;
+    transition: border-color 0.15s;
+  }
+  .form-input:focus, .form-select:focus { border-color: var(--accent2); }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: flex-end;
+  }
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    padding: 6px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .btn-ok {
+    background: var(--ink);
+    border: none;
+    color: var(--paper);
+    padding: 6px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  .btn-ok:hover { background: var(--accent); }
+
+  /* ── INDEX ── */
+  .index-section {
+    margin-top: 10px;
+  }
+  .index-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    padding: 4px 0;
+    border-bottom: 1px dotted var(--line);
+    font-size: 0.8rem;
+  }
+  .index-name { flex: 1; }
+  .index-dots {
+    flex: 1;
+    border-bottom: 1px dotted var(--line);
+    margin: 0 6px;
+    position: relative;
+    top: -3px;
+  }
+  .index-num {
+    color: var(--accent);
+    font-size: 0.75rem;
+    min-width: 28px;
+    text-align: right;
+  }
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    margin-bottom: 4px;
+  }
+  .progress-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    min-width: 50px;
+  }
+  .progress-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent2);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .progress-pct {
+    font-size: 0.65rem;
+    color: var(--accent2);
+    min-width: 30px;
+    text-align: right;
+  }
+
+  /* ── NO GRIST fallback ── */
+  .grist-notice {
+    text-align: center;
+    padding: 30px 20px 16px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-style: italic;
+    border-top: 1px dashed var(--line);
+    margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="notebook" id="notebook">
+
+  <!-- HEADER -->
+  <div class="nb-header">
+    <span class="title">BULLET JOURNAL</span>
+    <span class="subtitle">Grist Widget</span>
+    <span class="date-badge" id="today-badge">...</span>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs-bar" id="tabs-bar">
+    <!-- populated by JS -->
+    <button class="tab-add" id="btn-add-col" title="Nouvelle collection">＋</button>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="nb-content" id="nb-content">
+    <div class="empty">Chargement…</div>
+  </div>
+</div>
+
+<!-- MODAL: Nouvelle collection -->
+<div class="modal-overlay" id="modal-col">
+  <div class="modal">
+    <div class="modal-title">Nouvelle collection</div>
+    <div class="form-group">
+      <label class="form-label">Nom</label>
+      <input class="form-input" id="col-name-input" placeholder="ex: Avril 2025, Week 14…" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Type</label>
+      <select class="form-select" id="col-type-input">
+        <option value="daily">Daily Log</option>
+        <option value="weekly">Weekly Log</option>
+        <option value="monthly">Monthly Log</option>
+        <option value="future">Future Log</option>
+        <option value="custom">Collection custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date (optionnel)</label>
+      <input class="form-input" id="col-date-input" type="date" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="modal-cancel">Annuler</button>
+      <button class="btn-ok" id="modal-ok">Créer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════
+   BULLET JOURNAL GRIST WIDGET
+   Tables attendues dans Grist :
+   - Collections : id, Name, Type, Date, PageNum
+   - Entries     : id, CollectionId, Text, Symbol, Priority, Tags, Done, Migrated
+   ══════════════════════════════════════════════ */
+
+const SYMBOLS = {
+  task:      { char: '•',  label: 'Tâche',       css: 'sym-task'  },
+  event:     { char: '○',  label: 'Événement',   css: 'sym-event' },
+  note:      { char: '–',  label: 'Note',        css: 'sym-note'  },
+  done:      { char: '×',  label: 'Terminé',     css: 'sym-done'  },
+  migrated:  { char: '>',  label: 'Migré →',     css: 'sym-mig'   },
+  scheduled: { char: '<',  label: 'Planifié',    css: 'sym-sch'   },
+  cancelled: { char: '⊘', label: 'Annulé',       css: 'sym-can'   },
+};
+
+const TYPE_LABELS = {
+  daily:   'Daily Log',
+  weekly:  'Weekly Log',
+  monthly: 'Monthly Log',
+  future:  'Future Log',
+  custom:  'Collection',
+};
+
+// ── LOCAL STATE (demo + Grist overlay) ──
+let collections = [
+  { id: 1, Name: 'Index',     Type: 'custom',  Date: '',           PageNum: 1 },
+  { id: 2, Name: 'Avril 2025',Type: 'monthly', Date: '2025-04-01', PageNum: 3 },
+  { id: 3, Name: 'Semaine 14',Type: 'weekly',  Date: '2025-04-07', PageNum: 8 },
+  { id: 4, Name: '08 Avril',  Type: 'daily',   Date: '2025-04-08', PageNum: 9 },
+];
+
+let entries = [
+  { id:1, CollectionId:2, Text:'Planifier les vacances',    Symbol:'task',      Priority:true,  Tags:'perso',    Done:false, Migrated:false },
+  { id:2, CollectionId:2, Text:'Réunion budget Q2',         Symbol:'event',     Priority:false, Tags:'travail',  Done:false, Migrated:false },
+  { id:3, CollectionId:2, Text:'Commander livres Amazon',   Symbol:'task',      Priority:false, Tags:'',         Done:true,  Migrated:false },
+  { id:4, CollectionId:2, Text:'Note : revoir la stratégie de communication', Symbol:'note', Priority:false, Tags:'travail', Done:false, Migrated:false },
+  { id:5, CollectionId:3, Text:'Finir rapport mensuel',     Symbol:'task',      Priority:true,  Tags:'travail',  Done:false, Migrated:false },
+  { id:6, CollectionId:3, Text:'Appel dentiste',            Symbol:'task',      Priority:false, Tags:'santé',    Done:true,  Migrated:false },
+  { id:7, CollectionId:3, Text:'Idée projet : app jardinage',Symbol:'note',     Priority:false, Tags:'perso',    Done:false, Migrated:false },
+  { id:8, CollectionId:4, Text:'Morning pages',             Symbol:'task',      Priority:false, Tags:'',         Done:true,  Migrated:false },
+  { id:9, CollectionId:4, Text:'Stand-up 9h',               Symbol:'event',     Priority:false, Tags:'travail',  Done:false, Migrated:false },
+  { id:10,CollectionId:4, Text:'Relire PR #142',            Symbol:'task',      Priority:true,  Tags:'dev',      Done:false, Migrated:false },
+  { id:11,CollectionId:4, Text:'Réflexion sur les objectifs du mois', Symbol:'note', Priority:false, Tags:'',   Done:false, Migrated:false },
+];
+
+let activeColId = 4;
+let selectedSymbol = 'task';
+let nextId = 20;
+let gristConnected = false;
+
+// ── DATE BADGE ──
+function fmtToday() {
+  const d = new Date();
+  return d.toLocaleDateString('fr-FR', { weekday:'short', day:'2-digit', month:'short', year:'numeric' }).toUpperCase();
+}
+document.getElementById('today-badge').textContent = fmtToday();
+
+// ── RENDER TABS ──
+function renderTabs() {
+  const bar = document.getElementById('tabs-bar');
+  const addBtn = document.getElementById('btn-add-col');
+  // Remove all tabs except add button
+  bar.querySelectorAll('.tab').forEach(t => t.remove());
+  collections.forEach(col => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (col.id === activeColId ? ' active' : '');
+    btn.textContent = col.Name;
+    btn.onclick = () => { activeColId = col.id; renderTabs(); renderContent(); };
+    bar.insertBefore(btn, addBtn);
+  });
+}
+
+// ── RENDER CONTENT ──
+function renderContent() {
+  const col = collections.find(c => c.id === activeColId);
+  const area = document.getElementById('nb-content');
+  if (!col) { area.innerHTML = '<div class="empty">Sélectionne une collection.</div>'; return; }
+
+  const colEntries = entries.filter(e => e.CollectionId === col.id);
+  const doneCount = colEntries.filter(e => e.Done || e.Symbol === 'done').length;
+  const pct = colEntries.length ? Math.round(doneCount / colEntries.length * 100) : 0;
+
+  let html = `
+    <div class="col-header">
+      <span class="col-title">${col.Name}</span>
+      <span class="col-type-badge type-${col.Type}">${TYPE_LABELS[col.Type] || 'Custom'}</span>
+      ${col.Date ? `<span class="col-date">${fmtDate(col.Date)}</span>` : ''}
+    </div>
+  `;
+
+  // Index special view
+  if (col.Type === 'custom' && col.Name.toLowerCase() === 'index') {
+    html += renderIndex();
+  } else {
+    // Progress
+    if (colEntries.length > 0) {
+      html += `
+        <div class="progress-wrap">
+          <span class="progress-label">Avancement</span>
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <span class="progress-pct">${pct}%</span>
+        </div>
+      `;
+    }
+
+    html += `<ul class="entries-list" id="entries-list">`;
+    if (colEntries.length === 0) {
+      html += `<li class="empty" style="text-align:left;padding:24px 0;">Aucune entrée. Commence à écrire ↓</li>`;
+    } else {
+      colEntries.forEach(e => {
+        const sym = SYMBOLS[e.Symbol] || SYMBOLS.note;
+        const isDone = e.Done || e.Symbol === 'done';
+        const isMig  = e.Migrated || e.Symbol === 'migrated';
+        const tags = e.Tags ? e.Tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+        html += `
+          <li class="entry${isDone?' done':''}${isMig?' migrated':''}" data-id="${e.id}">
+            <span class="entry-symbol">${sym.char}</span>
+            <div class="entry-text">
+              ${e.Text}
+              ${tags.length ? `<div class="entry-tags">${tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>` : ''}
+            </div>
+            ${e.Priority ? `<span class="signifier">★</span>` : '<span class="signifier"></span>'}
+          </li>
+        `;
+      });
+    }
+    html += `</ul>`;
+
+    // Add entry bar
+    html += `
+      <div class="add-entry-bar">
+        <div class="symbol-picker">
+          ${Object.entries(SYMBOLS).slice(0,5).map(([k,v])=>
+            `<button class="sym-btn${selectedSymbol===k?' selected':''}" data-sym="${k}" title="${v.label}">${v.char}</button>`
+          ).join('')}
+        </div>
+        <input class="entry-input" id="new-entry-text" placeholder="Nouvelle entrée…" autocomplete="off" />
+        <button class="add-btn" id="btn-add-entry">Ajouter</button>
+      </div>
+    `;
+  }
+
+  if (!gristConnected) {
+    html += `<div class="grist-notice">⚡ Mode démo — connecte ce widget à Grist pour la persistance</div>`;
+  }
+
+  html += renderLegend();
+  area.innerHTML = html;
+
+  // Bind events
+  area.querySelectorAll('.sym-btn').forEach(btn => {
+    btn.onclick = () => { selectedSymbol = btn.dataset.sym; renderContent(); };
+  });
+
+  const addBtn = document.getElementById('btn-add-entry');
+  const input  = document.getElementById('new-entry-text');
+  if (addBtn && input) {
+    const doAdd = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      addEntry(activeColId, text, selectedSymbol);
+      renderContent();
+      // refocus
+      const newInput = document.getElementById('new-entry-text');
+      if (newInput) newInput.focus();
+    };
+    addBtn.onclick = doAdd;
+    input.onkeydown = (e) => { if (e.key === 'Enter') doAdd(); };
+  }
+
+  // Toggle done on entry click
+  area.querySelectorAll('.entry').forEach(li => {
+    li.onclick = (e) => {
+      if (e.target.closest('.add-entry-bar')) return;
+      const id = parseInt(li.dataset.id);
+      toggleDone(id);
+    };
+  });
+}
+
+function renderIndex() {
+  let html = `<div class="index-section">`;
+  collections.filter(c => c.Name.toLowerCase() !== 'index').forEach((col, i) => {
+    html += `
+      <div class="index-row">
+        <span class="index-name">${col.Name}</span>
+        <span class="index-dots"></span>
+        <span class="index-num">${col.PageNum || i+2}</span>
+      </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderLegend() {
+  return `
+    <div class="legend">
+      <div class="legend-title">Légende des symboles</div>
+      <div class="legend-grid">
+        ${Object.entries(SYMBOLS).map(([k,v])=>`
+          <div class="legend-item">
+            <span class="legend-sym">${v.char}</span>
+            <span>${v.label}</span>
+          </div>`).join('')}
+        <div class="legend-item"><span class="legend-sym">★</span><span>Priorité</span></div>
+        <div class="legend-item"><span class="legend-sym">!</span><span>Inspiration</span></div>
+      </div>
+    </div>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+}
+
+function addEntry(colId, text, symbol) {
+  const entry = { id: nextId++, CollectionId: colId, Text: text, Symbol: symbol, Priority: false, Tags: '', Done: false, Migrated: false };
+  entries.push(entry);
+  // Grist write
+  if (gristConnected) {
+    grist.docApi.applyUserActions([['AddRecord', 'Entries', null, {
+      CollectionId: colId, Text: text, Symbol: symbol, Priority: false, Tags: '', Done: false, Migrated: false
+    }]]).catch(console.warn);
+  }
+}
+
+function toggleDone(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  e.Done = !e.Done;
+  if (gristConnected) {
+    grist.docApi.applyUserActions([['UpdateRecord', 'Entries', id, { Done: e.Done }]]).catch(console.warn);
+  }
+  renderContent();
+}
+
+// ── MODAL: Add Collection ──
+document.getElementById('btn-add-col').onclick = () => {
+  document.getElementById('modal-col').classList.add('open');
+  document.getElementById('col-name-input').focus();
+};
+document.getElementById('modal-cancel').onclick = () => {
+  document.getElementById('modal-col').classList.remove('open');
+};
+document.getElementById('modal-ok').onclick = () => {
+  const name = document.getElementById('col-name-input').value.trim();
+  const type = document.getElementById('col-type-input').value;
+  const date = document.getElementById('col-date-input').value;
+  if (!name) return;
+  const newCol = { id: nextId++, Name: name, Type: type, Date: date, PageNum: collections.length + 1 };
+  collections.push(newCol);
+  activeColId = newCol.id;
+  document.getElementById('modal-col').classList.remove('open');
+  document.getElementById('col-name-input').value = '';
+  if (gristConnected) {
+    grist.docApi.applyUserActions([['AddRecord', 'Collections', null, {
+      Name: name, Type: type, Date: date, PageNum: newCol.PageNum
+    }]]).catch(console.warn);
+  }
+  renderTabs();
+  renderContent();
+};
+
+// ── GRIST INTEGRATION ──
+if (typeof grist !== 'undefined') {
+  grist.ready({ requiredAccess: 'full', columns: [] });
+
+  // Try to read both tables
+  grist.docApi.fetchTable('Collections').then(data => {
+    if (!data || !data.id) return;
+    gristConnected = true;
+    collections = data.id.map((id, i) => ({
+      id,
+      Name:    data.Name?.[i]    || '',
+      Type:    data.Type?.[i]    || 'custom',
+      Date:    data.Date?.[i]    || '',
+      PageNum: data.PageNum?.[i] || i + 1,
+    }));
+    if (collections.length) activeColId = collections[0].id;
+
+    return grist.docApi.fetchTable('Entries');
+  }).then(data => {
+    if (!data || !data.id) { renderTabs(); renderContent(); return; }
+    entries = data.id.map((id, i) => ({
+      id,
+      CollectionId: data.CollectionId?.[i] || 0,
+      Text:         data.Text?.[i]         || '',
+      Symbol:       data.Symbol?.[i]       || 'note',
+      Priority:     !!data.Priority?.[i],
+      Tags:         data.Tags?.[i]         || '',
+      Done:         !!data.Done?.[i],
+      Migrated:     !!data.Migrated?.[i],
+    }));
+    renderTabs();
+    renderContent();
+  }).catch(() => {
+    renderTabs();
+    renderContent();
+  });
+
+  // Live update on table change
+  grist.on('message', (msg) => {
+    if (msg.tableId === 'Entries' || msg.tableId === 'Collections') {
+      location.reload(); // simple refresh on external change
+    }
+  });
+} else {
+  // Demo mode
+  renderTabs();
+  renderContent();
+}
+</script>
+</body>
+</html>
